@@ -110,7 +110,7 @@ function handleTopicInitBuzzers(client, topic, msgJson){
   //
 
   buzzerList.push({"buzzerId": msgJson.id, "userName": userName});
-  console.log('buzzerId : '+buzzerId)
+  console.log('buzzerId : '+msgJson.id)
   console.log('userName : '+userName)
 }
 
