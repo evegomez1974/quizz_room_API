@@ -3,13 +3,26 @@ const pool = require('./db');
 
 let io = null; 
 
-let lastMessage = null; 
+let lastMessage = null;
+let buzzerList = [];
 
-const topics = [
-  'init/buzzers', 'play/game', 'play/canBuzz', 'play/buzz'
-]
+let premierBuzzerId;
+let hasBuzzedList = [];
 
-let premierBuzzer
+const topics = ['init/buzzers', 'play/game', 'play/canBuzz', 'play/buzz']
+
+const topicHandlers = {
+  'init/buzzers': handleTopicInitBuzzers, 
+  'play/game': handleTopicPlayGame,
+  'play/canBuzz': handleTopicPlayCanBuzz,
+  'play/buzz': handleTopicPlayBuzz
+}
+
+
+// TEMPORAIRE, tant que l'on ne récupère pas le nom des joueurs (pioche aléatoirement dedans)
+const TEMP_userName = ['Alice', 'Bob', 'Charlie', 'Diane', 'Lucie', 'François', 'Stephanie', 'Hugo', 'Emilie', 'Jacques'];
+const TEMP_usedName = [];
+
 
 function initMqtt(socketIo) {
   io = socketIo;
@@ -33,41 +46,108 @@ function initMqtt(socketIo) {
     console.log("MQTT reconnecting...");
   });
 
+  // Subscribes aux topics
   client.on('connect', () => {
     console.log('Connecté au broker MQTT');
 
-    // Subscribes aux topics
     for (topic of topics) {
       client.subscribe(topic, err => { if (err) console.error(`Erreur subscription MQTT, topic ${topic}`, err); });
     }
-
-    // client.subscribe('buzzer/topic', err => {
-    //   if (err) console.error('Erreur subscription MQTT', err);
-    // });
   });
 
+  // Lors d'un message dans un topic
   client.on('message', async (topic, message) => {
-    const msgStr = message.toString();
-    console.log("MQTT topic: " + topic + "\n ==> message: " + message.toString());
 
-    lastMessage = msgStr;
+    // Transforme le message de retour en JSON
+    let msgJson
+    try{
+      msgJson = JSON.parse(message.toString());
+    } catch(err) {
+      console.log('Erreur pour transformer le message reçu en json :\n', err)
+      return;
+    }
 
-    // if (topic == 'play/buzz' || topic == 'play/game') {
+    lastMessage = message;
+    console.log("MQTT topic: " + topic + " ==> RETOUR:\n" + message.toString());
 
-    // }
+    // Récupère la fonction lié au topic 
+    const handler = topicHandlers[topic];
+
+    // Lance la fonction lié au topic
+    if (handler) {
+      try{
+        handler(client, topic, msgJson);
+      } catch(err) {
+        console.error(`Erreur pour utilisé la fonction handler du topic ${topic}:\n`, err);
+      }
+    }
 
     // Exemple : stocker dans PostgreSQL (table buzzer_events)
     // try {
-    //   await pool.query('INSERT INTO buzzer_events (message, received_at) VALUES ($1, NOW())', [msgStr]);
+    //   await pool.query('INSERT INTO buzzer_events (message, received_at) VALUES ($1, NOW())', [message]);
     // } catch (err) {
     //   console.error('Erreur insertion dans la table buzzer_events !\n', err);
     // }
 
     // Diffuser via socket.io à tous les clients connectés
     if (io) {
-      io.emit('buzzerUpdate', { state: msgStr });
+      io.emit('buzzerUpdate', { state: message });
     }
   });
+}
+
+
+// Ajoute un buzzer à la liste des buzzers utilisé (avec un user lié)
+function handleTopicInitBuzzers(client, topic, msgJson){
+
+  // TEMPORAIRE, pour la récup aléatoire de l'userName
+  const availableNames = TEMP_userName.filter(name => !TEMP_usedName.includes(name));
+  const randomIndex = Math.floor(Math.random() * availableNames.length);
+  const userName = availableNames[randomIndex];
+
+  //
+  // AJOUTER ici la requete qui créer un user. Il faudrait donc aussi pourvoir récup le nom de l'user
+  //
+
+  buzzerList.push({"buzzerId": msgJson.id, "userName": userName});
+  console.log('buzzerId : '+buzzerId)
+  console.log('userName : '+userName)
+}
+
+
+// Vide la liste des buzzers de la partie
+function handleTopicPlayGame(client, topic, msgJson){
+  if (msgJson.message == 'game start'){
+    buzzerList = []
+    premierBuzzerId = '';
+    hasBuzzedList = [];
+    console.log(' --> Vide la liste des buzzers de la partie : '+premierBuzzerId)
+  }
+}
+
+
+// Vide la liste des buzzs de la question
+function handleTopicPlayCanBuzz(client, topic, msgJson){
+  if (msgJson.message == 'buzz start'){
+    premierBuzzerId = '';
+    hasBuzzedList = [];
+    console.log(' --> Vide la liste des buzzs de la question : '+premierBuzzerId)
+  }
+} 
+
+
+// Ajout à la liste des buzzers
+function handleTopicPlayBuzz(client, topic, msgJson){
+
+  // Incrémente la liste des buzzers qui ont appuyé
+  hasBuzzedList.push({"buzzerId": msgJson.buzzer, "reactivity": msgJson.reactivity});
+
+  // Trouve le buzzer (parmis la liste) avec la plus petite réactivité
+  const premierBuzzer = hasBuzzedList.reduce((min, buzzer) => buzzer.reactivity < min.reactivity ? buzzer : min , hasBuzzedList[0]);
+  premierBuzzerId = premierBuzzer.buzzerId;
+  console.log('buzzerId : '+msgJson.buzzer)
+  console.log('reactivity : '+msgJson.reactivity)
+  console.log(' --> Premier buzzer : '+premierBuzzerId)
 }
 
 
@@ -87,16 +167,10 @@ function publishMessage(client, topic, message) {
   });
 }
 
+
 function getLastMessage() {
   return lastMessage;
 }
-
-// function premierBuzz(topic, message){
-//   if (topic == 'play/game'){
-
-//   }
-// }
-
 
 
 module.exports = { initMqtt, getLastMessage };
