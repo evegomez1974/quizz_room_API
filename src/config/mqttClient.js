@@ -1,5 +1,7 @@
 const mqtt = require('mqtt');
 const pool = require('./db');
+const UserService = require('../user/service');
+const Partie  = require('../partie/service');
 
 let io = null; 
 
@@ -16,6 +18,15 @@ const topicHandlers = {
   'play/game': handleTopicPlayGame,
   'play/canBuzz': handleTopicPlayCanBuzz,
   'play/buzz': handleTopicPlayBuzz
+}
+
+// Fonction de génération d’un nom de partie
+function generateGameName() {
+  const adjectives = ['Épique', 'Rapide', 'Mortelle', 'Silencieuse', 'Mystérieuse'];
+  const nouns = ['Foudre', 'Ombre', 'Panthère', 'Tempête', 'Phoenix'];
+  const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
+  return `${randomAdj} ${randomNoun}`;
 }
 
 
@@ -98,22 +109,74 @@ function initMqtt(socketIo) {
 
 
 // Ajoute un buzzer à la liste des buzzers utilisé (avec un user lié)
-function handleTopicInitBuzzers(client, topic, msgJson){
-
-  // TEMPORAIRE, pour la récup aléatoire de l'userName
+async function handleTopicInitBuzzers(client, topic, msgJson) {
+  // TEMPORAIRE : pour la récup aléatoire de l'userName
   const availableNames = TEMP_userName.filter(name => !TEMP_usedName.includes(name));
   const randomIndex = Math.floor(Math.random() * availableNames.length);
   const userName = availableNames[randomIndex];
 
-  //
-  // AJOUTER ici la requete qui créer un user. Il faudrait donc aussi pourvoir récup le nom de l'user
-  //
+  if (!userName) {
+    console.error('Aucun nom disponible pour créer un nouvel utilisateur');
+    return;
+  }
 
-  buzzerList.push({"buzzerId": msgJson.id, "userName": userName});
-  console.log('buzzerId : '+msgJson.id)
-  console.log('userName : '+userName)
+  TEMP_usedName.push(userName); // pour éviter les doublons
+
+  try {
+    // Crée un utilisateur en base
+    const roleId = 2; // ou autre ID selon ton app
+    const buzzerId = msgJson.id;
+
+    const newUser = await UserService.createUser(userName, roleId, buzzerId);
+
+    buzzerList.push({
+      buzzerId: buzzerId,
+      userName: newUser.name,
+      userId: newUser.id
+    });
+
+    console.log('Nouveau user créé :', newUser);
+
+
+  } catch (err) {
+    console.error('Erreur lors de la création du user depuis MQTT :', err);
+  }
 }
 
+// Crée un maitre du jeu et une partie
+let gameMaster = null;
+let newPartie = null;
+
+async function handleTopicPlayGame(client, topic, msgJson) {
+  if (msgJson.message === 'game start') {
+    try {
+      // Choisir un nom pour le maître du jeu
+      const availableMJNames = availableNames.filter(name => !TEMP_usedName.includes(name));
+      if (availableMJNames.length === 0) {
+        console.warn('Aucun nom disponible pour le maître du jeu');
+        return;
+      }
+
+      const mjName = availableMJNames[Math.floor(Math.random() * availableMJNames.length)];
+      TEMP_usedName.push(mjName);
+
+      // Créer le maître du jeu (roleId = 1, buzzerId = null)
+      gameMaster = await UserService.createUser(mjName, 1, null);
+      console.log('Maître du jeu créé :', gameMaster);
+
+      // Créer une nouvelle partie
+      const gameName = generateGameName(); // Assure-toi que cette fonction existe
+      const scoreInitial = 0;
+      newPartie = await PartieService.createPartie(gameName, scoreInitial);
+      console.log('Nouvelle partie créée :', newPartie);
+
+    } catch (error) {
+      console.error('Erreur lors du démarrage du jeu :', error);
+    }
+  }
+}
+
+   
 
 // Vide la liste des buzzers de la partie
 function handleTopicPlayGame(client, topic, msgJson){
