@@ -3,7 +3,9 @@ const pool = require('./db');
 const UserService = require('../user/service');
 const Partie  = require('../partie/service');
 
+
 let io = null; 
+let client = null;
 
 let lastMessage = null;
 let buzzerList = [];
@@ -46,7 +48,8 @@ function initMqtt(socketIo) {
     reconnectPeriod: 1000,
   };
 
-  const client = mqtt.connect(process.env.MQTT_BROKER_URL, options);
+  client = mqtt.connect(process.env.MQTT_BROKER_URL, options);
+  global.mqttClient = client;
 
   client.on("error", (err) => {
     console.log("MQTT error: ", err);
@@ -108,86 +111,73 @@ function initMqtt(socketIo) {
 }
 
 
-// Ajoute un buzzer à la liste des buzzers utilisé (avec un user lié)
 async function handleTopicInitBuzzers(client, topic, msgJson) {
-  // TEMPORAIRE : pour la récup aléatoire de l'userName
-  const availableNames = TEMP_userName.filter(name => !TEMP_usedName.includes(name));
-  const randomIndex = Math.floor(Math.random() * availableNames.length);
-  const userName = availableNames[randomIndex];
+  const buzzerArray = msgJson.buzzers;
 
-  if (!userName) {
-    console.error('Aucun nom disponible pour créer un nouvel utilisateur');
+  if (!Array.isArray(buzzerArray)) {
+    console.error("Format invalide pour les buzzers :", msgJson);
     return;
   }
 
-  TEMP_usedName.push(userName); // pour éviter les doublons
+  const availableNames = TEMP_userName.filter(name => !TEMP_usedName.includes(name));
 
-  try {
-    // Crée un utilisateur en base
-    const roleId = 2; // ou autre ID selon ton app
-    const buzzerId = msgJson.id;
+  if (availableNames.length < buzzerArray.length) {
+    console.error("Pas assez de noms disponibles pour tous les buzzers !");
+    return;
+  }
 
-    const newUser = await UserService.createUser(userName, roleId, buzzerId);
+  const createdUsers = [];
 
-    buzzerList.push({
-      buzzerId: buzzerId,
-      userName: newUser.name,
-      userId: newUser.id
-    });
+  for (let i = 0; i < buzzerArray.length; i++) {
+    const buzzer = buzzerArray[i];
+    const userName = availableNames[i];
+    const roleId = 2;
 
-    console.log('Nouveau user créé :', newUser);
+    try {
+      const newUser = await UserService.createUser(userName, roleId, buzzer.id);
 
+      // Marquer le nom comme utilisé
+      TEMP_usedName.push(userName);
 
-  } catch (err) {
-    console.error('Erreur lors de la création du user depuis MQTT :', err);
+      const userData = {
+        buzzerId: buzzer.id,
+        userName: newUser.name,
+        userId: newUser.id
+      };
+
+      buzzerList.push(userData);
+      createdUsers.push(userData);
+
+      console.log('Utilisateur créé :', userData);
+    } catch (err) {
+      console.error(`Erreur lors de la création du user pour le buzzer ${buzzer.id} :`, err);
+    }
+  }
+  //console.log('Liste emit :', createdUsers);
+  // Réemission à tous les clients quand tous les users sont créés
+  if (io) {
+    io.emit('buzzerUpdate', { buzzers: createdUsers });
   }
 }
 
-// Crée un maitre du jeu et une partie
-let gameMaster = null;
-let newPartie = null;
+
 
 async function handleTopicPlayGame(client, topic, msgJson) {
   if (msgJson.message === 'game start') {
+    buzzerList = []
+    premierBuzzerId = '';
+    hasBuzzedList = [];
+    console.log(' --> Vide la liste des buzzers de la partie : '+premierBuzzerId)
     try {
-      // Choisir un nom pour le maître du jeu
-      const availableMJNames = availableNames.filter(name => !TEMP_usedName.includes(name));
-      if (availableMJNames.length === 0) {
-        console.warn('Aucun nom disponible pour le maître du jeu');
-        return;
-      }
-
-      const mjName = availableMJNames[Math.floor(Math.random() * availableMJNames.length)];
-      TEMP_usedName.push(mjName);
-
-      // Créer le maître du jeu (roleId = 1, buzzerId = null)
-      gameMaster = await UserService.createUser(mjName, 1, null);
-      console.log('Maître du jeu créé :', gameMaster);
-
-      // Créer une nouvelle partie
-      const gameName = generateGameName(); // Assure-toi que cette fonction existe
-      const scoreInitial = 0;
-      newPartie = await PartieService.createPartie(gameName, scoreInitial);
-      console.log('Nouvelle partie créée :', newPartie);
-
+      console.log("on envoie via sse sur ecran joueur")
+      // afficher la question et la partie à l'écran des user plus le timer (décompte) via sse
     } catch (error) {
       console.error('Erreur lors du démarrage du jeu :', error);
     }
   }
 }
 
-   
-
-// Vide la liste des buzzers de la partie
-function handleTopicPlayGame(client, topic, msgJson){
-  if (msgJson.message == 'game start'){
-    buzzerList = []
-    premierBuzzerId = '';
-    hasBuzzedList = [];
-    console.log(' --> Vide la liste des buzzers de la partie : '+premierBuzzerId)
-  }
-}
-
+  
 
 // Vide la liste des buzzs de la question
 function handleTopicPlayCanBuzz(client, topic, msgJson){
@@ -211,6 +201,9 @@ function handleTopicPlayBuzz(client, topic, msgJson){
   console.log('buzzerId : '+msgJson.buzzer)
   console.log('reactivity : '+msgJson.reactivity)
   console.log(' --> Premier buzzer : '+premierBuzzerId)
+   
+  // quand on a le premier on envoi l'info via websoket sur ecran maitre du jeu
+  // on ajoute l'ihfo dans la table question_user de la bdd
 }
 
 
@@ -222,18 +215,34 @@ function subscribeToTopic(client, topic) {
 
 
 // Publish
-function publishMessage(client, topic, message) {
-  console.log(`Sending Topic: ${topic}, Message: ${message}`);
-  client.publish(topic, message, {
-    qos: 0,
-    retain: false,
+
+function publishMessage(topic, message) {
+  if (!client) {
+    console.error('MQTT client not initialized.');
+    return;
+  }
+
+  if (!client.connected) {
+    console.error('MQTT client not connected.');
+    return;
+  }
+
+  client.publish(topic, message, { qos: 1 }, (err) => {
+    if (err) console.error('Publish error:', err);
+    else console.log(`Message published to ${topic}:`, message);
   });
 }
+
+
 
 
 function getLastMessage() {
   return lastMessage;
 }
 
+function getMqttClient() {
+  return client;
+}
 
-module.exports = { initMqtt, getLastMessage };
+
+module.exports = { initMqtt, getLastMessage, publishMessage, getMqttClient  };

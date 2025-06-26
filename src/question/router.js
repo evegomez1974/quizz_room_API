@@ -24,7 +24,7 @@ router.post('/themes/:themeId/questions/:questionId', async (req, res) => {
   const { themeId, questionId } = req.params;
 
   try {
-    const link = await Service.addQuestionToTheme(themeId, questionId);
+    const link = await Question.addQuestionToTheme(themeId, questionId);
     res.status(201).json(link);
   } catch (error) {
     console.error('Erreur lors de l\'ajout de la question au thème :', error);
@@ -64,7 +64,7 @@ router.get('/themes/:id/questions', async (req, res) => {
   const themeId = req.params.id;
 
   try {
-    const questions = await Service.getQuestionsByTheme(themeId);
+    const questions = await Question.getQuestionsByTheme(themeId);
     res.json(questions);
   } catch (error) {
     console.error('Erreur lors de la récupération des questions par thème :', error);

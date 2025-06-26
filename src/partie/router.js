@@ -3,10 +3,10 @@ const router = express.Router();
 const Partie = require('./service');
 
 // Créer une partie
-router.post('/parties', async (req, res) => {
+router.post('/partie', async (req, res) => {
   const { name_partie, score_partie } = req.body;
-
-  if (!name_partie || !score_partie) {
+  console.log( name_partie, score_partie)
+  if (!name_partie) {
     return res.status(400).json({ error: 'name_partie et score_partie sont requis' });
   }
 

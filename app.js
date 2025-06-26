@@ -9,13 +9,13 @@ const roleRoute = require('./src/role/router');
 const partieRoute = require('./src/partie/router');
 const questionRoute = require('./src/question/router');
 const themeRoute = require('./src/theme/router');
-const { initMqtt, getLastMessage } = require('./src/config/mqttClient');
+const { initMqtt, getLastMessage, publishMessage  } = require('./src/config/mqttClient');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST'],
   },
 });
@@ -43,34 +43,61 @@ app.get('/buzzer/api/state', (req, res) => {
   res.json({ state: getLastMessage() || 'Aucun signal reçu' });
 });
 
-// SSE : streaming des états buzzer
-app.get('/buzzer/api/stream', (req, res) => {
-  res.set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
+let buzzerList = []; 
+// 📁 dans le fichier principal de ton serveur, après avoir défini `io`
+io.on('connection', (socket) => {
+  console.log('✅ Nouveau client connecté:', socket.id);
+
+  socket.on('buzz', (data) => {
+    console.log('📣 Buzz reçu:', data);
+
+    buzzerList.push({
+      buzzerId: data.buzzerId,
+      userId: data.userId,
+      userName: data.userName
+    });
+    // Renvoie la vraie liste des buzzers créés dynamiquement
+    io.emit('buzzerUpdate', buzzerList);
+    console.log('📤 Envoi buzzerList :', buzzerList);
   });
 
-  // Envoi initial
-  res.write(`data: ${JSON.stringify({ state: getLastMessage() })}\n\n`);
+  socket.on('game start', (data) => {
+    console.log('Réception game start:', data);
 
-  // Fonction à appeler quand un message arrive (via socket.io)
-  const onBuzzerUpdate = (data) => {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
 
-  // Écoute les événements socket.io 'buzzerUpdate'
-  io.on('connection', (socket) => {
-    socket.on('buzzerUpdate', onBuzzerUpdate);
+    // on affiche sur l'écan des jouer via sse
+        // Publier un message MQTT ici
+      const topic = 'play/game';
+      const message = JSON.stringify({ message: 'game start' });
+
+      publishMessage(topic, message); 
+
   });
 
-  req.on('close', () => {
-    // Pour simplifier, ici pas de détachement d'écouteurs,
-    // en prod tu devrais gérer ça pour éviter fuite mémoire.
+  socket.on('timer ended', ({ gameId, questionId }) => {
+    console.log(`Timer terminé pour la partie ${gameId}, question ${questionId}`);
+
+    // Publier un message MQTT ici
+      const topic = 'play/canBuzz';
+      const message = JSON.stringify({ message: 'buzz start' });
+
+      publishMessage(topic, message); 
+      
+  });
+
+  socket.on('disconnect', () => {
+    console.log('Client déconnecté:', socket.id);
   });
 });
 
+
+
+// const PORT = process.env.PORT || 3000;
+// app.listen(PORT, () => {
+//   console.log(`Serveur en écoute sur http://localhost:${PORT}`);
+// });
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Serveur en écoute sur http://localhost:${PORT}`);
 });

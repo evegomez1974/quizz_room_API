@@ -35,6 +35,7 @@ async getQuestionsByTheme(themeId) {
         q.titre,
         q.label,
         q.points,
+        q.timer,
         t.id AS theme_id,
         t.label AS theme_label
         FROM questions_themes qt
