@@ -198,14 +198,20 @@ function handleTopicPlayBuzz(client, topic, msgJson){
   // Trouve le buzzer (parmis la liste) avec la plus petite réactivité
   const premierBuzzer = hasBuzzedList.reduce((min, buzzer) => buzzer.reactivity < min.reactivity ? buzzer : min , hasBuzzedList[0]);
   premierBuzzerId = premierBuzzer.buzzerId;
-  console.log('buzzerId : '+msgJson.buzzer)
-  console.log('reactivity : '+msgJson.reactivity)
+  // console.log('buzzerId : '+msgJson.buzzer)
+  // console.log('reactivity : '+msgJson.reactivity)
   console.log(' --> Premier buzzer : '+premierBuzzerId)
+
    
-  // quand on a le premier on envoi l'info via websoket sur ecran maitre du jeu
-  // on ajoute l'ihfo dans la table question_user de la bdd
 }
 
+function getHasBuzzedList() {
+    return hasBuzzedList;
+  }
+
+function resetHasBuzzedList() {
+  hasBuzzedList = [];
+}
 
 // Subscribe
 function subscribeToTopic(client, topic) {
@@ -240,9 +246,7 @@ function getLastMessage() {
   return lastMessage;
 }
 
-function getMqttClient() {
-  return client;
-}
 
 
-module.exports = { initMqtt, getLastMessage, publishMessage, getMqttClient  };
+
+module.exports = { initMqtt, getLastMessage, publishMessage, getHasBuzzedList,resetHasBuzzedList  };

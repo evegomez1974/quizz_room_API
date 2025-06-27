@@ -37,6 +37,23 @@ async getUserByPartieAndQuestion(partieId, questionId) {
     return result.rows[0]?.user_id || null;
     },
 
+    async getUsersScoreForPartie(partieId) {
+    const result = await pool.query(
+        `SELECT 
+        name_partie, 
+        name,
+        score_partie
+        FROM parties_users pu
+        JOIN users u ON pu.user_id = u.id
+        JOIN parties p ON pu.partie_id = p.id
+        WHERE partie_id = $1`,
+        [partieId]
+    );
+    return result.rows[0];
+    },
+
+    
+
     async getUserScoreForPartie(user_id, partie_id) {
         const result = await pool.query(
             `SELECT 
@@ -103,6 +120,18 @@ async getUserByPartieAndQuestion(partieId, questionId) {
 
     return Object.values(grouped);
     },
+
+
+    async postQuestionByPartieByUser(user_id, partie_id, question_id) {
+        const result = await pool.query(
+            `INSERT INTO parties_questions (user_id, partie_id, question_id)
+            VALUES ($1, $2, $3)
+            RETURNING *;`,
+            [user_id, partie_id, question_id]
+        );
+        return result.rows[0];
+    },
+
 
 
     async updateUser(name, role_id, buzzer_id, id) {

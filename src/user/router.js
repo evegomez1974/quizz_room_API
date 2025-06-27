@@ -66,7 +66,7 @@ router.get('/user/:id/role/:role_id', async (req, res) => {
 router.get('/parties/:partieId/questions/:questionId/user', async (req, res) => {
   const { partieId, questionId } = req.params;
   try {
-    const userId = await Service.getUserByPartieAndQuestion(partieId, questionId);
+    const userId = await User.getUserByPartieAndQuestion(partieId, questionId);
     if (!userId) {
       return res.status(404).json({ error: 'Aucun utilisateur trouvé pour cette partie et question' });
     }
@@ -83,7 +83,23 @@ router.get('/users/:user_id/parties/:partie_id/score', async (req, res) => {
   const { user_id, partie_id } = req.params;
 
   try {
-    const result = await Service.getUserScoreForPartie(user_id, partie_id);
+    const result = await User.getUserScoreForPartie(user_id, partie_id);
+    if (!result) {
+      return res.status(404).json({ error: 'Aucun score trouvé pour cet utilisateur dans cette partie' });
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('Erreur lors de la récupération du score:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Récupération du score des users d'une partie
+router.get('/users/parties/:partie_id/score', async (req, res) => {
+  const { partie_id } = req.params;
+
+  try {
+    const result = await User.getUsersScoreForPartie(partie_id);
     if (!result) {
       return res.status(404).json({ error: 'Aucun score trouvé pour cet utilisateur dans cette partie' });
     }
@@ -97,7 +113,7 @@ router.get('/users/:user_id/parties/:partie_id/score', async (req, res) => {
 // Récupéaration des scores de tous les users pour toutes les parties
 router.get('/scores', async (req, res) => {
   try {
-    const scores = await Service.getAllScoresGroupedByPartie();
+    const scores = await User.getAllScoresGroupedByPartie();
     res.json(scores);
   } catch (error) {
     console.error('Erreur lors de la récupération des scores:', error);
@@ -108,11 +124,29 @@ router.get('/scores', async (req, res) => {
 // Récupéaration de tous les scores des joueurs pour une partie
 router.get('/scores/grouped', async (req, res) => {
   try {
-    const groupedScores = await Service.getScoresGroupedByPartie();
+    const groupedScores = await User.getScoresGroupedByPartie();
     res.json(groupedScores);
   } catch (error) {
     console.error('Erreur lors de la récupération des scores groupés:', error);
     res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Ajout le user qui a rep a une question dans une partie
+router.post('/parties/:partieId/questions/:questionId/user/:userId', async (req, res) => {
+  try {
+    const { partieId, questionId, userId } = req.params;
+
+
+    if (!userId || !partieId || !questionId) {
+      return res.status(400).json({ error: 'Paramètres manquants' });
+    }
+
+    const result = await User.postQuestionByPartieByUser(userId, partieId, questionId);
+    return res.status(201).json({ message: 'Insertion réussie', data: result });
+  } catch (error) {
+    console.error('Erreur insertion parties_questions:', error);
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 

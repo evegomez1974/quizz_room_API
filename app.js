@@ -9,7 +9,8 @@ const roleRoute = require('./src/role/router');
 const partieRoute = require('./src/partie/router');
 const questionRoute = require('./src/question/router');
 const themeRoute = require('./src/theme/router');
-const { initMqtt, getLastMessage, publishMessage  } = require('./src/config/mqttClient');
+const { initMqtt, getLastMessage, publishMessage, getHasBuzzedList, resetHasBuzzedList  } = require('./src/config/mqttClient');
+
 
 const app = express();
 const server = http.createServer(app);
@@ -43,13 +44,15 @@ app.get('/buzzer/api/state', (req, res) => {
   res.json({ state: getLastMessage() || 'Aucun signal reçu' });
 });
 
+// websoket
+
 let buzzerList = []; 
 // 📁 dans le fichier principal de ton serveur, après avoir défini `io`
 io.on('connection', (socket) => {
-  console.log('✅ Nouveau client connecté:', socket.id);
+  console.log('Nouveau client connecté:', socket.id);
 
   socket.on('buzz', (data) => {
-    console.log('📣 Buzz reçu:', data);
+    console.log('Buzz reçu:', data);
 
     buzzerList.push({
       buzzerId: data.buzzerId,
@@ -58,7 +61,7 @@ io.on('connection', (socket) => {
     });
     // Renvoie la vraie liste des buzzers créés dynamiquement
     io.emit('buzzerUpdate', buzzerList);
-    console.log('📤 Envoi buzzerList :', buzzerList);
+    console.log('Envoi buzzerList :', buzzerList);
   });
 
   socket.on('game start', (data) => {
@@ -82,7 +85,43 @@ io.on('connection', (socket) => {
       const message = JSON.stringify({ message: 'buzz start' });
 
       publishMessage(topic, message); 
-      
+
+      // // Réinitialiser la liste avant chaque session de buzz
+      // hasBuzzedList = [];
+      resetHasBuzzedList();
+
+      // Attendre 5 secondes puis traiter le premier buzzer
+      setTimeout(() => {
+        const hasBuzzedList = getHasBuzzedList();
+        if (!hasBuzzedList || hasBuzzedList.length === 0) {
+          console.log('Aucun buzzer n\'a répondu à temps.');
+          socket.emit('noBuzz', { gameId, questionId });
+          return;
+        }
+
+        const premierBuzzer = hasBuzzedList.reduce((min, buzzer) => 
+          buzzer.reactivity < min.reactivity ? buzzer : min, 
+          hasBuzzedList[0]
+        );
+
+        const premierBuzzerId = premierBuzzer.buzzerId;
+
+        console.log(`Premier buzzer : ${premierBuzzerId}`);
+        console.log(`Liste buzzer : ${JSON.stringify(hasBuzzedList, null, 2)}`);
+
+
+        // Envoi au front 
+        socket.emit('buzz result', {
+          // gameId,
+          // questionId,
+          premierBuzzerId,
+          buzzers: hasBuzzedList,
+        });
+
+        // quand on a le premier on envoi l'info via websoket sur ecran maitre du jeu
+        // via sse sur eccran joueur
+      }, 5000);
+
   });
 
   socket.on('disconnect', () => {

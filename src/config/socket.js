@@ -17,4 +17,5 @@ module.exports = (io) => {
       console.log(`Client déconnecté : ${socket.id}`);
     });
   });
-};
+
+}
