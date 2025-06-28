@@ -80,9 +80,14 @@ io.on('connection', (socket) => {
   socket.on('timer ended', ({ gameId, questionId }) => {
     console.log(`Timer terminé pour la partie ${gameId}, question ${questionId}`);
 
+    //fetch recup label + timer 
+
+
     // Publier un message MQTT ici
       const topic = 'play/canBuzz';
       const message = JSON.stringify({ message: 'buzz start' });
+
+    // sse timer 
 
       publishMessage(topic, message); 
 
