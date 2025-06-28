@@ -9,6 +9,18 @@ const User = {
         return result.rows[0];
     },
 
+    async resultPartie(user_id, partie_id, score) {
+        const result = await pool.query(
+          `INSERT INTO parties_users (user_id, partie_id, score)
+            VALUES ($1, $2, $3)
+            RETURNING *`,
+        [user_id, partie_id, score]
+        );
+        return result.rows[0];
+    },
+
+
+
     async getUserById(id) {
         const result = await pool.query(`SELECT * FROM users WHERE id = $1`, [id]);
         return result.rows[0];
@@ -40,16 +52,19 @@ async getUserByPartieAndQuestion(partieId, questionId) {
     async getUsersScoreForPartie(partieId) {
     const result = await pool.query(
         `SELECT 
-        name_partie, 
-        name,
-        score_partie
-        FROM parties_users pu
-        JOIN users u ON pu.user_id = u.id
-        JOIN parties p ON pu.partie_id = p.id
-        WHERE partie_id = $1`,
+            u.id AS user_id,
+            u.name AS user_name,
+            SUM(CAST(q.points AS INTEGER)) AS total_score
+            FROM parties_questions pq
+            JOIN users u ON pq.user_id = u.id
+            JOIN questions q ON pq.question_id = q.id
+            WHERE pq.partie_id = $1
+            GROUP BY u.id, u.name
+            ORDER BY total_score DESC;
+            `,
         [partieId]
     );
-    return result.rows[0];
+    return result.rows;
     },
 
     

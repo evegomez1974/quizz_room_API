@@ -120,7 +120,20 @@ io.on('connection', (socket) => {
 
         // quand on a le premier on envoi l'info via websoket sur ecran maitre du jeu
         // via sse sur eccran joueur
-      }, 5000);
+      }, 2000);
+
+  });
+
+  socket.on('game end', (data) => {
+    console.log('Réception game end:', data);
+
+
+    // on affiche sur l'écan des jouer via sse
+        // Publier un message MQTT ici
+      const topic = 'play/game';
+      const message = JSON.stringify({ message: 'game stop' });
+
+      publishMessage(topic, message); 
 
   });
 
