@@ -81,6 +81,12 @@ io.on('connection', (socket) => {
     // deconte timer affichage questiohn + timer 
   });
 
+  socket.on('question result', (data) => {
+    console.log('Réception result question:', data);
+    // on affiche sur l'écan des jouer via sse
+    // deconte timer affichage questiohn + timer 
+  });
+
   socket.on('timer ended', ({ gameId, questionId }) => {
     console.log(`Timer terminé pour la partie ${gameId}, question ${questionId}`);
 
