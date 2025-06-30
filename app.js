@@ -61,7 +61,8 @@ let buzzerList = [];
 let questionLabel = '';
 let questionTimer = '';
 let questionEndTimer = false;
-let reponseWinnerIndex = false;
+let reponseJuste;
+let reponseFausse;
 
 
 // 📁 dans le fichier principal de ton serveur, après avoir défini `io`
@@ -106,13 +107,13 @@ io.on('connection', (socket) => {
   // Réponse juste
   socket.on('result question', (data) => {
     console.log('Réception result question (juste):', data);
-    reponse = data;
+    reponseJuste = data;
   });
 
   // Réponse fausse
   socket.on('question result', (data) => {
     console.log('Réception question result (fausse):', data);
-    reponse = data;
+    reponseFausse = data;
   });
 
   socket.on('timer ended', ({ gameId, questionId }) => {
@@ -288,18 +289,22 @@ app.get('/buzzer/api/sse/firstPlayer', (req, res) => {
   });
 
   const interval = setInterval(() => {
-    data = getPremierBuzzerUserName()
-    if (data != null){
-      if (reponse.winner != null){
-        res.write(`data: ${data}|||${reponse.winner}\n\n`);
+
+    let data;
+    if (reponseFausse == null){
+      data = getPremierBuzzerUserName()
+      if (data != null){
+        res.write(`data: ${data}|||\n\n`);
       }
       else{
-        res.write(`data: ${data}|||\n\n`);
+        res.write(`data: \n\n`);
       }
     }
     else{
-      res.write(`data: \n\n`);
+      data = reponseFausse
+      res.write(`data: ${data.nextUser}\n\n`);
     }
+
   }, 100); // Send every second
 
   req.on('close', () => {
