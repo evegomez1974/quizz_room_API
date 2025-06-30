@@ -62,25 +62,29 @@ io.on('connection', (socket) => {
     // Renvoie la vraie liste des buzzers créés dynamiquement
     io.emit('buzzerUpdate', buzzerList);
     console.log('Envoi buzzerList :', buzzerList);
+    // affichage via sse 
   });
 
   socket.on('game start', (data) => {
     console.log('Réception game start:', data);
-
-
     // on affiche sur l'écan des jouer via sse
-        // Publier un message MQTT ici
+    // message MQTT 
       const topic = 'play/game';
       const message = JSON.stringify({ message: 'game start' });
-
       publishMessage(topic, message); 
+    
+  });
 
+  socket.on('question start', (data) => {
+    console.log('Réception question start:', data);
+    // on affiche sur l'écan des jouer via sse
+    // deconte timer affichage questiohn + timer 
   });
 
   socket.on('timer ended', ({ gameId, questionId }) => {
     console.log(`Timer terminé pour la partie ${gameId}, question ${questionId}`);
 
-    //fetch recup label + timer 
+    // afficher GO
 
 
     // Publier un message MQTT ici
@@ -131,7 +135,7 @@ io.on('connection', (socket) => {
 
   socket.on('game end', (data) => {
     console.log('Réception game end:', data);
-
+      // fin de jeu
 
     // on affiche sur l'écan des jouer via sse
         // Publier un message MQTT ici
