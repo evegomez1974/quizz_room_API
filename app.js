@@ -9,7 +9,7 @@ const roleRoute = require('./src/role/router');
 const partieRoute = require('./src/partie/router');
 const questionRoute = require('./src/question/router');
 const themeRoute = require('./src/theme/router');
-const { initMqtt, getLastMessage, publishMessage, getHasBuzzedList, resetHasBuzzedList  } = require('./src/config/mqttClient');
+const { initMqtt, getLastMessage, publishMessage, getHasBuzzedList, resetHasBuzzedList, getBuzzerList, getPremierBuzzerUserName } = require('./src/config/mqttClient');
 
 
 const app = express();
@@ -20,6 +20,15 @@ const io = new Server(server, {
     methods: ['GET', 'POST'],
   },
 });
+
+// Empeche l'API de crash en cas de problèmes de connection
+process.on('uncaughtException', err => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
 
 
 require('./src/config/socket')(io);
@@ -47,6 +56,14 @@ app.get('/buzzer/api/state', (req, res) => {
 // websoket
 
 let buzzerList = []; 
+
+// Pour SSE :
+let questionLabel = '';
+let questionTimer = '';
+let questionEndTimer = false;
+let reponseWinnerIndex = false;
+
+
 // 📁 dans le fichier principal de ton serveur, après avoir défini `io`
 io.on('connection', (socket) => {
   console.log('Nouveau client connecté:', socket.id);
@@ -77,14 +94,25 @@ io.on('connection', (socket) => {
 
   socket.on('question start', (data) => {
     console.log('Réception question start:', data);
-    // on affiche sur l'écan des jouer via sse
+    
+    // Pour SSE :
+    questionLabel = data.question;
+    questionTimer = data.timer;
+    questionEndTimer = false;
+
     // deconte timer affichage questiohn + timer 
   });
 
+  // Réponse juste
+  socket.on('result question', (data) => {
+    console.log('Réception result question (juste):', data);
+    reponse = data;
+  });
+
+  // Réponse fausse
   socket.on('question result', (data) => {
-    console.log('Réception result question:', data);
-    // on affiche sur l'écan des jouer via sse
-    // deconte timer affichage questiohn + timer 
+    console.log('Réception question result (fausse):', data);
+    reponse = data;
   });
 
   socket.on('timer ended', ({ gameId, questionId }) => {
@@ -97,7 +125,8 @@ io.on('connection', (socket) => {
       const topic = 'play/canBuzz';
       const message = JSON.stringify({ message: 'buzz start' });
 
-    // sse timer 
+    // Pour SSE :
+    questionEndTimer = true;
 
       publishMessage(topic, message); 
 
@@ -167,4 +196,114 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Serveur en écoute sur http://localhost:${PORT}`);
+});
+
+
+//// ENVOIE SSE :
+
+// ListOfPlayers :
+app.get('/buzzer/api/sse/listOfPlayers', (req, res) => {
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  const interval = setInterval(() => {
+
+    data = getBuzzerList();
+    // console.log(data)
+    let userNameList = ''
+    let index = 0;
+    for (const item of data){
+      if (index === 0) {
+        userNameList += `${item.userName} (Buzzer: ${item.buzzerId})`
+      }
+      else{
+        userNameList += ';' + `${item.userName} (Buzzer: ${item.buzzerId})`
+      }
+      index++;
+     }
+     
+    if (userNameList != null){
+      res.write(`data: ${userNameList}\n\n`);              
+    }
+    else{
+      res.write(`data: \n\n`);
+    }
+  }, 1000); // Send every second
+
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
+});
+
+
+// Question :
+app.get('/buzzer/api/sse/question', (req, res) => {
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  const interval = setInterval(() => {
+
+    if (!questionEndTimer){
+      
+      data = `${questionLabel};${questionTimer}`
+      if (data != null){
+        res.write(`data: ${data}\n\n`);              
+      }
+      else{
+        res.write(`data: \n\n`);
+      }
+
+      if (questionTimer > 0){
+        questionTimer = questionTimer - 1;
+      }
+
+    }
+    else{
+      data = `${questionLabel};`
+      res.write(`data: ${data}\n\n`); 
+    }
+    
+  }, 1000); // Send every second
+
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
+});
+
+
+// FirstPlayer
+app.get('/buzzer/api/sse/firstPlayer', (req, res) => {
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  const interval = setInterval(() => {
+    data = getPremierBuzzerUserName()
+    if (data != null){
+      if (reponse.winner != null){
+        res.write(`data: ${data}|||${reponse.winner}\n\n`);
+      }
+      else{
+        res.write(`data: ${data}|||\n\n`);
+      }
+    }
+    else{
+      res.write(`data: \n\n`);
+    }
+  }, 100); // Send every second
+
+  req.on('close', () => {
+    clearInterval(interval);
+    res.end();
+  });
 });

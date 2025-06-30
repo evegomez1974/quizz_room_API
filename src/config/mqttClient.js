@@ -3,7 +3,6 @@ const pool = require('./db');
 const UserService = require('../user/service');
 const Partie  = require('../partie/service');
 
-
 let io = null; 
 let client = null;
 
@@ -34,11 +33,12 @@ function generateGameName() {
 
 // TEMPORAIRE, tant que l'on ne récupère pas le nom des joueurs (pioche aléatoirement dedans)
 const TEMP_userName = ['Alice', 'Bob', 'Charlie', 'Diane', 'Lucie', 'François', 'Stephanie', 'Hugo', 'Emilie', 'Jacques'];
-const TEMP_usedName = [];
+let TEMP_usedName = [];
 
 
-function initMqtt(socketIo) {
+function initMqtt(socketIo, _app) {
   io = socketIo;
+  app = _app
 
   const options = {
     username: process.env.MQTT_BROKER_USERNAME,
@@ -164,16 +164,16 @@ async function handleTopicInitBuzzers(client, topic, msgJson) {
 
 async function handleTopicPlayGame(client, topic, msgJson) {
   if (msgJson.message === 'game start') {
-    buzzerList = []
-    premierBuzzerId = '';
+    premierBuzzerId = null;
     hasBuzzedList = [];
-    console.log(' --> Vide la liste des buzzers de la partie : '+premierBuzzerId)
-    try {
-      console.log("on envoie via sse sur ecran joueur")
-      // afficher la question et la partie à l'écran des user plus le timer (décompte) via sse
-    } catch (error) {
-      console.error('Erreur lors du démarrage du jeu :', error);
-    }
+  }
+
+  if (msgJson.message === 'game stop') {
+    buzzerList = [];
+    TEMP_usedName = [];
+    console.log(' --> Vide la liste des buzzers de la partie')
+    premierBuzzerId = null;
+    hasBuzzedList = [];
   }
 }
 
@@ -182,9 +182,9 @@ async function handleTopicPlayGame(client, topic, msgJson) {
 // Vide la liste des buzzs de la question
 function handleTopicPlayCanBuzz(client, topic, msgJson){
   if (msgJson.message == 'buzz start'){
-    premierBuzzerId = '';
+    premierBuzzerId = null;
     hasBuzzedList = [];
-    console.log(' --> Vide la liste des buzzs de la question : '+premierBuzzerId)
+    console.log(' --> Vide la liste des buzzs de la question')
   }
 } 
 
@@ -240,6 +240,27 @@ function publishMessage(topic, message) {
 }
 
 
+function getBuzzerList(){
+  return buzzerList;
+}
+
+function getPremierBuzzerId() {
+  return premierBuzzerId;
+}
+function getPremierBuzzerUserName() {
+  if (premierBuzzerId != null){
+    buzzer = buzzerList.find(item => item.buzzerId === premierBuzzerId)
+    if (buzzer){
+      return buzzer.userName;
+    }
+    else{
+      return null
+    }
+  }
+  else{
+    return null
+  }
+}
 
 
 function getLastMessage() {
@@ -249,4 +270,4 @@ function getLastMessage() {
 
 
 
-module.exports = { initMqtt, getLastMessage, publishMessage, getHasBuzzedList,resetHasBuzzedList  };
+module.exports = { initMqtt, getLastMessage, publishMessage, getHasBuzzedList, resetHasBuzzedList, getBuzzerList, getPremierBuzzerUserName };
